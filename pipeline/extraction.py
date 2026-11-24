@@ -1,113 +1,84 @@
-"""Extract shot events from raw StatsBomb event data.
+"""Extract and normalize shot rows from StatsBombPy event DataFrames."""
 
-Each StatsBomb shot event is nested JSON. This module flattens the fields we
-need into a plain dictionary, one per shot, and attaches match-level metadata.
-Only information known at the moment of the shot is read here; the shot's end
-location and StatsBomb's own xG are read solely as metadata/benchmark columns.
-"""
+from typing import Any, Dict, List
 
-from typing import Any, Dict, List, Optional
-
-SHOT_EVENT_TYPE = "Shot"
+import pandas as pd
 
 
-def _get_nested(record: Dict[str, Any], *keys: str) -> Any:
-    """Safely walk nested dictionaries, returning None if any key is missing.
-
-    Args:
-        record: The dictionary to traverse.
-        *keys: Sequence of keys to follow.
-
-    Returns:
-        The value at the end of the path, or None.
-    """
-    current: Any = record
-    for key in keys:
-        if not isinstance(current, dict) or key not in current:
-            return None
-        current = current[key]
-    return current
+def _clean_value(value: Any) -> Any:
+    """Convert pandas missing values to None without treating lists as scalars."""
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    try:
+        return None if pd.isna(value) else value
+    except (TypeError, ValueError):
+        return value
 
 
-def extract_shot_events(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Return only the shot events from a list of raw match events.
+def _coordinate(location: Any, index: int) -> Any:
+    """Safely return one coordinate from a StatsBomb location."""
+    location = _clean_value(location)
+    if not isinstance(location, (list, tuple)) or len(location) <= index:
+        return None
+    return _clean_value(location[index])
 
-    Args:
-        events: Raw event dictionaries for one match.
 
-    Returns:
-        The subset whose ``type.name`` is ``"Shot"``, in original order.
-    """
-    shots = []
-    for event in events:
-        if _get_nested(event, "type", "name") == SHOT_EVENT_TYPE:
-            shots.append(event)
-    return shots
+def _end_coordinate(end_location: Any, index: int) -> Any:
+    """Safely return one coordinate from a shot end location."""
+    return _coordinate(end_location, index)
 
 
 def flatten_shot(event: Dict[str, Any], match_meta: Dict[str, Any]) -> Dict[str, Any]:
-    """Flatten one raw shot event into a row-shaped dictionary.
-
-    Args:
-        event: A single raw shot event.
-        match_meta: Metadata for the match containing the shot. Must include
-            ``match_id``, ``competition`` and ``season``.
-
-    Returns:
-        A dictionary with one key per output column. Missing source fields
-        are represented as None so that downstream code can handle them.
-    """
-    shot = event.get("shot") or {}
-    location = event.get("location") or [None, None]
+    """Map one flattened StatsBombPy shot row to the project's column names."""
+    location = event.get("location")
+    end_location = event.get("shot_end_location")
 
     return {
-        "shot_id": event.get("id"),
+        "shot_id": _clean_value(event.get("id")),
         "match_id": match_meta["match_id"],
         "competition": match_meta["competition"],
         "season": match_meta["season"],
-        "period": event.get("period"),
-        "minute": event.get("minute"),
-        "second": event.get("second"),
-        "team": _get_nested(event, "team", "name"),
-        "player": _get_nested(event, "player", "name"),
-        "x": location[0] if len(location) > 0 else None,
-        "y": location[1] if len(location) > 1 else None,
-        "shot_type": _get_nested(shot, "type", "name"),
-        "body_part": _get_nested(shot, "body_part", "name"),
-        "technique": _get_nested(shot, "technique", "name"),
-        "first_time": shot.get("first_time"),
-        "one_on_one": shot.get("one_on_one"),
-        "under_pressure": event.get("under_pressure"),
-        "play_pattern": _get_nested(event, "play_pattern", "name"),
-        "outcome": _get_nested(shot, "outcome", "name"),
-        # Benchmark and metadata only: NOT features (see features.NON_FEATURE_COLUMNS).
-        "statsbomb_xg": shot.get("statsbomb_xg"),
-        "end_x": _end_coordinate(shot, 0),
-        "end_y": _end_coordinate(shot, 1),
+        "period": _clean_value(event.get("period")),
+        "minute": _clean_value(event.get("minute")),
+        "second": _clean_value(event.get("second")),
+        "team": _clean_value(event.get("team")),
+        "player": _clean_value(event.get("player")),
+        "x": _coordinate(location, 0),
+        "y": _coordinate(location, 1),
+        "shot_type": _clean_value(event.get("shot_type")),
+        "body_part": _clean_value(event.get("shot_body_part")),
+        "technique": _clean_value(event.get("shot_technique")),
+        "first_time": _clean_value(event.get("shot_first_time")),
+        "one_on_one": _clean_value(event.get("shot_one_on_one")),
+        "under_pressure": _clean_value(event.get("under_pressure")),
+        "play_pattern": _clean_value(event.get("play_pattern")),
+        "outcome": _clean_value(event.get("shot_outcome")),
+        # Benchmark and post-shot metadata; never use these as model features.
+        "statsbomb_xg": _clean_value(event.get("shot_statsbomb_xg")),
+        "end_x": _end_coordinate(end_location, 0),
+        "end_y": _end_coordinate(end_location, 1),
     }
 
 
-def _end_coordinate(shot: Dict[str, Any], index: int) -> Optional[float]:
-    """Return one coordinate of a shot's end location, or None if absent."""
-    end_location = shot.get("end_location")
-    if not isinstance(end_location, list) or len(end_location) <= index:
-        return None
-    return end_location[index]
+def extract_shot_events(events: pd.DataFrame) -> pd.DataFrame:
+    """Return shot events from a StatsBombPy event DataFrame."""
+    if "type" not in events.columns:
+        raise ValueError("StatsBombPy events DataFrame has no 'type' column")
+    return events.loc[events["type"] == "Shot"].copy()
 
 
 def extract_match_shots(
-    events: List[Dict[str, Any]], match_meta: Dict[str, Any]
+    events: pd.DataFrame, match_meta: Dict[str, Any]
 ) -> List[Dict[str, Any]]:
-    """Extract and flatten every shot from one match.
+    """Flatten all supplied shot events into the project's row schema.
 
-    Args:
-        events: Raw event dictionaries for the match.
-        match_meta: Metadata used to label each shot.
-
-    Returns:
-        One flattened dictionary per shot event.
+    The downloader normally supplies only regular-period shots through
+    get_shots(); this function also accepts a full event DataFrame.
     """
-    rows = []
-    for event in extract_shot_events(events):
-        rows.append(flatten_shot(event, match_meta))
-    return rows
+    shots = extract_shot_events(events)
+    return [
+        flatten_shot(event, match_meta)
+        for event in shots.to_dict(orient="records")
+    ]
