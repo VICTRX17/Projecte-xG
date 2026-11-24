@@ -10,7 +10,7 @@ from typing import Any, Iterable, List
 
 import requests
 
-from xg_pipeline.config import (
+from pipeline.config import (
     RAW_DIR,
     REQUEST_TIMEOUT_SECONDS,
     STATSBOMB_RAW_BASE_URL,
