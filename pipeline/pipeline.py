@@ -14,11 +14,11 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import pandas as pd
 
-from xg_pipeline.config import PROCESSED_DIR, SELECTED_COMPETITIONS, CompetitionSeason
-from xg_pipeline.download import DownloadError, StatsBombDownloader
-from xg_pipeline.extraction import extract_match_shots
-from xg_pipeline.features import build_features
-from xg_pipeline.validation import ValidationError, validate_processed, validate_raw_events
+from pipeline.config import PROCESSED_DIR, SELECTED_COMPETITIONS, CompetitionSeason
+from pipeline.download import DownloadError, StatsBombDownloader
+from pipeline.extraction import extract_match_shots
+from pipeline.features import build_features
+from pipeline.validation import ValidationError, validate_processed, validate_raw_events
 
 PROCESSED_FILENAME = "shots.csv"
 REPORT_FILENAME = "run_report.json"
