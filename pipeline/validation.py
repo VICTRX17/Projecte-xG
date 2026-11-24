@@ -8,8 +8,8 @@ from typing import Any, Dict, List
 
 import pandas as pd
 
-from xg_pipeline.config import GOAL_X, PITCH_LENGTH, PITCH_WIDTH
-from xg_pipeline.features import FEATURE_COLUMNS, NON_FEATURE_COLUMNS, TARGET_COLUMN
+from pipeline.config import GOAL_X, PITCH_LENGTH, PITCH_WIDTH
+from pipeline.features import FEATURE_COLUMNS, NON_FEATURE_COLUMNS, TARGET_COLUMN
 
 REQUIRED_COLUMNS = (
     "shot_id",
