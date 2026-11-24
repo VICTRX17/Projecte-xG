@@ -14,7 +14,7 @@ from typing import Dict, Tuple
 
 import pandas as pd
 
-from xg_pipeline.config import (
+from pipeline.config import (
     GOAL_CENTER_Y,
     GOAL_POST_HIGH_Y,
     GOAL_POST_LOW_Y,
